@@ -47,13 +47,13 @@ export function useAnimatedDynamicRefs(): [
   ContextType['refMap'],
   ContextType['setRef'],
 ] {
-  const [map, setMap] = useState<ContextType['refMap']>({})
+  const mapRef = useRef<ContextType['refMap']>({})
   const setRef = useCallback((key: TabName, ref: AnimatedRef<RefComponent>) => {
-    setMap((map) => ({ ...map, [key]: ref }))
+    mapRef.current[key] = ref
     return ref
   }, [])
 
-  return [map, setRef as ContextType['setRef']]
+  return [mapRef.current, setRef as ContextType['setRef']]
 }
 
 export function useTabProps<T extends TabName>(
@@ -120,16 +120,15 @@ export function useTabNameContext(): TabName {
 
 export function useLayoutHeight(initialHeight: number = 0) {
   const [height, setHeight] = useState(initialHeight)
+  const heightRef = useRef(initialHeight)
 
-  const getHeight = useCallback(
-    (event: LayoutChangeEvent) => {
-      const latestHeight = event.nativeEvent.layout.height
-      if (latestHeight !== height) {
-        setHeight(latestHeight)
-      }
-    },
-    [height, setHeight]
-  )
+  const getHeight = useCallback((event: LayoutChangeEvent) => {
+    const latestHeight = event.nativeEvent.layout.height
+    if (latestHeight !== heightRef.current) {
+      heightRef.current = latestHeight
+      setHeight(latestHeight)
+    }
+  }, [])
   return [height, getHeight] as const
 }
 /**
@@ -187,8 +186,9 @@ export function useUpdateScrollViewContentSize({ name }: { name: TabName }) {
     (name: TabName, height: number) => {
       'worklet'
       const tabIndex = tabNames.value.indexOf(name)
-      contentHeights.value[tabIndex] = height
-      contentHeights.value = [...contentHeights.value]
+      const newHeights = [...contentHeights.value]
+      newHeights[tabIndex] = height
+      contentHeights.value = newHeights
     },
     [contentHeights, tabNames]
   )
@@ -385,7 +385,7 @@ export const useScrollHandlerY = (name: TabName) => {
             scrollYCurrent.value = y
           }
 
-          scrollY.value[name] = scrollYCurrent.value
+          scrollY.value = { ...scrollY.value, [name]: scrollYCurrent.value }
           oldAccScrollY.value = accScrollY.value
           accScrollY.value = scrollY.value[name] + offset.value
 
@@ -500,7 +500,7 @@ export const useScrollHandlerY = (name: TabName) => {
 
         if (nextPosition !== null) {
           // console.log(`sync ${name} ${nextPosition}`)
-          scrollY.value[name] = nextPosition
+          scrollY.value = { ...scrollY.value, [name]: nextPosition }
           scrollTo(refMap[name], 0, nextPosition, false, `[${name}] sync pane`)
         }
       }
@@ -586,11 +586,9 @@ export function useConvertAnimatedToValue<T>(
       return animatedValue.value
     },
     (animValue) => {
-      if (animValue !== value) {
-        runOnJS(setValue)(animValue)
-      }
+      runOnJS(setValue)(animValue)
     },
-    [value]
+    []
   )
 
   return value || 0

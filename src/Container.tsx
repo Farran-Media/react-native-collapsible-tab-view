@@ -1,5 +1,10 @@
 import React from 'react'
-import { StyleSheet, useWindowDimensions, View } from 'react-native'
+import {
+  InteractionManager,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from 'react-native'
 import PagerView from 'react-native-pager-view'
 import Animated, {
   runOnJS,
@@ -8,7 +13,6 @@ import Animated, {
   useAnimatedStyle,
   useDerivedValue,
   useSharedValue,
-  withDelay,
   withTiming,
   useFrameCallback,
 } from 'react-native-reanimated'
@@ -17,7 +21,7 @@ import { Context, TabNameContext } from './Context'
 import { Lazy } from './Lazy'
 import { MaterialTabBar, TABBAR_HEIGHT } from './MaterialTabBar'
 import { Tab } from './Tab'
-import { IS_IOS, ONE_FRAME_MS, scrollToImpl } from './helpers'
+import { IS_IOS, scrollToImpl } from './helpers'
 import {
   useAnimatedDynamicRefs,
   useContainerRef,
@@ -150,10 +154,10 @@ export const Container = React.memo(
 
       const afterRender = useSharedValue(0)
       React.useEffect(() => {
-        afterRender.value = withDelay(
-          ONE_FRAME_MS * 5,
-          withTiming(1, { duration: 0 })
-        )
+        const interaction = InteractionManager.runAfterInteractions(() => {
+          afterRender.value = withTiming(1, { duration: 0 })
+        })
+        return () => interaction.cancel()
       }, [afterRender, tabNamesArray])
 
       const resyncTabScroll = () => {
@@ -230,7 +234,7 @@ export const Container = React.memo(
         syncScrollFrame.setActive(toggle)
       const syncScrollFrame = useFrameCallback(({ timeSinceFirstFrame }) => {
         syncCurrentTabScrollPosition()
-        if (timeSinceFirstFrame > 1500) {
+        if (timeSinceFirstFrame > 500) {
           runOnJS(toggleSyncScrollFrame)(false)
         }
       }, false)
@@ -349,36 +353,65 @@ export const Container = React.memo(
         [onTabPress]
       )
 
+      const contextValue = React.useMemo<ContextType>(
+        () => ({
+          contentInset,
+          tabBarHeight,
+          headerHeight,
+          refMap,
+          tabNames,
+          index,
+          snapThreshold,
+          revealHeaderOnScroll,
+          focusedTab,
+          accDiffClamp,
+          indexDecimal,
+          containerHeight,
+          minHeaderHeight,
+          scrollYCurrent,
+          scrollY,
+          setRef,
+          headerScrollDistance,
+          accScrollY,
+          oldAccScrollY,
+          offset,
+          snappingTo,
+          contentHeights,
+          headerTranslateY,
+          width,
+          allowHeaderOverscroll,
+        }),
+        [
+          contentInset,
+          tabBarHeight,
+          headerHeight,
+          refMap,
+          tabNames,
+          index,
+          snapThreshold,
+          revealHeaderOnScroll,
+          focusedTab,
+          accDiffClamp,
+          indexDecimal,
+          containerHeight,
+          minHeaderHeight,
+          scrollYCurrent,
+          scrollY,
+          setRef,
+          headerScrollDistance,
+          accScrollY,
+          oldAccScrollY,
+          offset,
+          snappingTo,
+          contentHeights,
+          headerTranslateY,
+          width,
+          allowHeaderOverscroll,
+        ]
+      )
+
       return (
-        <Context.Provider
-          value={{
-            contentInset,
-            tabBarHeight,
-            headerHeight,
-            refMap,
-            tabNames,
-            index,
-            snapThreshold,
-            revealHeaderOnScroll,
-            focusedTab,
-            accDiffClamp,
-            indexDecimal,
-            containerHeight,
-            minHeaderHeight,
-            scrollYCurrent,
-            scrollY,
-            setRef,
-            headerScrollDistance,
-            accScrollY,
-            oldAccScrollY,
-            offset,
-            snappingTo,
-            contentHeights,
-            headerTranslateY,
-            width,
-            allowHeaderOverscroll,
-          }}
-        >
+        <Context.Provider value={contextValue}>
           <Animated.View
             style={[styles.container, { width }, containerStyle]}
             onLayout={getContainerLayoutHeight}
@@ -474,15 +507,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     zIndex: 100,
     width: '100%',
-    backgroundColor: 'white',
-    shadowColor: '#000000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.23,
-    shadowRadius: 2.62,
-    elevation: 4,
   },
   tabBarContainer: {
     zIndex: 1,

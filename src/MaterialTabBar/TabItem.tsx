@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useCallback, useMemo } from 'react'
 import { StyleSheet, Pressable, Platform } from 'react-native'
 import Animated, {
   Extrapolation,
@@ -51,6 +51,10 @@ export const MaterialTabItem = <T extends TabName = string>(
     }
   })
 
+  const handlePress = useCallback(() => {
+    onPress(name)
+  }, [onPress, name])
+
   const renderedLabel = useMemo(() => {
     if (typeof label === 'string') {
       return (
@@ -72,7 +76,7 @@ export const MaterialTabItem = <T extends TabName = string>(
         styles.item,
         style,
       ]}
-      onPress={() => onPress(name)}
+      onPress={handlePress}
       android_ripple={{
         borderless: true,
         color: pressColor,
