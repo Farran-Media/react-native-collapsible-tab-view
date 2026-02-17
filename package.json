@@ -45,6 +45,7 @@
   "homepage": "https://github.com/PedroBern/react-native-collapsible-tab-view#readme",
   "devDependencies": {
     "@commitlint/config-conventional": "^19.1.0",
+    "@legendapp/list": "^2.0.19",
     "@microsoft/tsdoc": "^0.14.2",
     "@release-it/conventional-changelog": "^8.0.1",
     "@shopify/flash-list": "^1.6.4",

@@ -35,7 +35,7 @@ export declare const Tabs: {
     MasonryFlashList: <T_3>(p: import("@shopify/flash-list").MasonryFlashListProps<T_3> & {
         ref?: import("react").Ref<import("@shopify/flash-list").MasonryFlashListRef<any>> | undefined;
     }) => import("react").ReactElement<any, string | import("react").JSXElementConstructor<any>>;
-    LegendList: <T_4>(p: import("react-native").FlatListProps<T_4> & {
+    LegendList: <T_4>(p: Omit<import("@legendapp/list").LegendListProps<T_4>, "onScroll"> & {
         ref?: import("react").Ref<any> | undefined;
     }) => import("react").ReactElement<any, string | import("react").JSXElementConstructor<any>>;
 };

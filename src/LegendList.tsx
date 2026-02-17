@@ -1,5 +1,5 @@
+import type { LegendListProps as LLProps } from '@legendapp/list'
 import React from 'react'
-import { FlatListProps } from 'react-native'
 import Animated from 'react-native-reanimated'
 
 import {
@@ -54,11 +54,11 @@ function LegendListImpl<R>(
     onContentSizeChange,
     refreshControl,
     ...rest
-  }: Omit<FlatListProps<R>, 'onScroll'>,
+  }: Omit<LLProps<R>, 'onScroll'>,
   passRef: React.Ref<any>
 ): React.ReactElement {
   const name = useTabNameContext()
-  const { setRef, contentInset } = useTabsContext()
+  const { setRef } = useTabsContext()
   const ref = useSharedAnimatedRef<any>(passRef)
 
   const { scrollHandler, enable } = useScrollHandlerY(name)
@@ -100,21 +100,11 @@ function LegendListImpl<R>(
     [progressViewOffset, refreshControl]
   )
 
-  const memoContentInset = React.useMemo(
-    () => ({ top: contentInset }),
-    [contentInset]
-  )
-
-  const memoContentOffset = React.useMemo(
-    () => ({ x: 0, y: -contentInset }),
-    [contentInset]
-  )
-
   const memoContentContainerStyle = React.useMemo(
-    () => [
-      _contentContainerStyle,
-      contentContainerStyle as any,
-    ],
+    () => ({
+      ..._contentContainerStyle,
+      ...(contentContainerStyle as object),
+    }),
     [_contentContainerStyle, contentContainerStyle]
   )
   const memoStyle = React.useMemo(() => [_style, style], [_style, style])
@@ -131,8 +121,6 @@ function LegendListImpl<R>(
       onScroll={scrollHandler}
       onContentSizeChange={scrollContentSizeChangeHandlers}
       scrollEventThrottle={16}
-      contentInset={memoContentInset}
-      contentOffset={memoContentOffset}
       automaticallyAdjustContentInsets={false}
       refreshControl={memoRefreshControl}
       // workaround for: https://github.com/software-mansion/react-native-reanimated/issues/2735
@@ -143,7 +131,8 @@ function LegendListImpl<R>(
 
 /**
  * Use like a regular LegendList from @legendapp/list.
+ * Note: Requires allowHeaderOverscroll on the Tabs.Container for iOS.
  */
 export const LegendList = React.forwardRef(LegendListImpl) as <T>(
-  p: FlatListProps<T> & { ref?: React.Ref<any> }
+  p: Omit<LLProps<T>, 'onScroll'> & { ref?: React.Ref<any> }
 ) => React.ReactElement

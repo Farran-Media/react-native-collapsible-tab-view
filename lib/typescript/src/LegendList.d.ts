@@ -1,8 +1,9 @@
+import type { LegendListProps as LLProps } from '@legendapp/list';
 import React from 'react';
-import { FlatListProps } from 'react-native';
 /**
  * Use like a regular LegendList from @legendapp/list.
+ * Note: Requires allowHeaderOverscroll on the Tabs.Container for iOS.
  */
-export declare const LegendList: <T>(p: FlatListProps<T> & {
+export declare const LegendList: <T>(p: Omit<LLProps<T>, 'onScroll'> & {
     ref?: React.Ref<any>;
 }) => React.ReactElement;
