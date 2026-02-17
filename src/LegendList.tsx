@@ -1,30 +1,30 @@
 import type { LegendListProps as LLProps } from '@legendapp/list'
-import React from 'react'
-import Animated from 'react-native-reanimated'
+import React, { useCallback, useMemo } from 'react'
+import { NativeScrollEvent, NativeSyntheticEvent } from 'react-native'
+import {
+  Extrapolation,
+  interpolate,
+  runOnUI,
+  useAnimatedRef,
+} from 'react-native-reanimated'
 
+import { IS_IOS } from './helpers'
 import {
   useAfterMountEffect,
   useChainCallback,
-  useCollapsibleStyle,
   useScrollHandlerY,
-  useSharedAnimatedRef,
   useTabNameContext,
   useTabsContext,
   useUpdateScrollViewContentSize,
 } from './hooks'
 
-let AnimatedLegendList: React.ComponentClass<any> | null = null
+let RawLegendList: React.ComponentType<any> | null = null
 
 const ensureLegendList = () => {
-  if (AnimatedLegendList) {
-    return
-  }
-
+  if (RawLegendList) return
   try {
     const legendListModule = require('@legendapp/list')
-    AnimatedLegendList = Animated.createAnimatedComponent(
-      legendListModule.LegendList
-    ) as unknown as React.ComponentClass<any>
+    RawLegendList = legendListModule.LegendList
   } catch {
     console.error(
       'The optional dependency @legendapp/list is not installed. Please install it to use the LegendList component.'
@@ -39,8 +39,8 @@ const ensureLegendList = () => {
 const LegendListMemo = React.memo(
   React.forwardRef<any, React.PropsWithChildren<any>>((props, passRef) => {
     ensureLegendList()
-    return AnimatedLegendList ? (
-      <AnimatedLegendList ref={passRef} {...props} />
+    return RawLegendList ? (
+      <RawLegendList ref={passRef} {...props} />
     ) : (
       <></>
     )
@@ -58,39 +58,72 @@ function LegendListImpl<R>(
   passRef: React.Ref<any>
 ): React.ReactElement {
   const name = useTabNameContext()
-  const { setRef } = useTabsContext()
-  const ref = useSharedAnimatedRef<any>(passRef)
+  const {
+    setRef,
+    headerHeight,
+    tabBarHeight,
+    containerHeight,
+    width,
+    minHeaderHeight,
+    focusedTab,
+    tabNames,
+    scrollYCurrent,
+    scrollY,
+    oldAccScrollY,
+    accScrollY,
+    offset,
+    contentHeights,
+    accDiffClamp,
+    headerScrollDistance,
+    revealHeaderOnScroll,
+    allowHeaderOverscroll,
+  } = useTabsContext()
 
-  const { scrollHandler, enable } = useScrollHandlerY(name)
+  // AnimatedRef to LegendList's internal ScrollView (via refScrollView prop)
+  // so scrollToImpl can sync scroll positions across tabs
+  const scrollViewRef = useAnimatedRef<any>()
+
+  // useScrollHandlerY for its sync-unfocused-scenes reaction and enable callback.
+  // We don't use its scrollHandler since LegendList has its own internal ScrollView.
+  const { enable } = useScrollHandlerY(name)
+
   const onLayout = useAfterMountEffect(rest.onLayout, () => {
     'worklet'
-    // we enable the scroll event after mounting
-    // otherwise we get an `onScroll` call with the initial scroll position which can break things
     enable(true)
   })
 
-  const {
-    style: _style,
-    contentContainerStyle: _contentContainerStyle,
-    progressViewOffset,
-  } = useCollapsibleStyle()
+  // LegendList doesn't support iOS contentInset, so we ALWAYS use paddingTop
+  // to position content below the header, regardless of allowHeaderOverscroll.
+  const containerHeightWithMinHeader = Math.max(
+    0,
+    (containerHeight ?? 0) - minHeaderHeight
+  )
+  const _contentContainerStyle = useMemo(
+    () => ({
+      minHeight: containerHeightWithMinHeader + (headerHeight || 0),
+      paddingTop: (headerHeight || 0) + (tabBarHeight || 0),
+    }),
+    [containerHeightWithMinHeader, headerHeight, tabBarHeight]
+  )
+  const progressViewOffset =
+    IS_IOS && allowHeaderOverscroll
+      ? 0
+      : (headerHeight || 0) + (tabBarHeight || 0)
 
+  // Register the internal ScrollView ref (not the LegendList ref) in the refMap
   React.useEffect(() => {
-    setRef(name, ref)
-  }, [name, ref, setRef])
+    setRef(name, scrollViewRef)
+  }, [name, scrollViewRef, setRef])
 
-  const scrollContentSizeChange = useUpdateScrollViewContentSize({
-    name,
-  })
-
+  const scrollContentSizeChange = useUpdateScrollViewContentSize({ name })
   const scrollContentSizeChangeHandlers = useChainCallback(
-    React.useMemo(
+    useMemo(
       () => [scrollContentSizeChange, onContentSizeChange],
       [onContentSizeChange, scrollContentSizeChange]
     )
   )
 
-  const memoRefreshControl = React.useMemo(
+  const memoRefreshControl = useMemo(
     () =>
       refreshControl &&
       React.cloneElement(refreshControl, {
@@ -100,30 +133,104 @@ function LegendListImpl<R>(
     [progressViewOffset, refreshControl]
   )
 
-  const memoContentContainerStyle = React.useMemo(
+  const memoContentContainerStyle = useMemo(
     () => ({
       ..._contentContainerStyle,
       ...(contentContainerStyle as object),
     }),
     [_contentContainerStyle, contentContainerStyle]
   )
-  const memoStyle = React.useMemo(() => [_style, style], [_style, style])
+
+  const memoStyle = useMemo(
+    () => [{ width }, style],
+    [width, style]
+  )
+
+  // JS-level scroll handler — updates shared values via runOnUI.
+  // No contentInset adjustment needed since LegendList uses paddingTop instead.
+  const onScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const rawY = event.nativeEvent.contentOffset.y
+      runOnUI(
+        (
+          y: number,
+          _name: string,
+          _containerHeight: number,
+          _allowHeaderOverscroll: boolean | undefined,
+          _revealHeaderOnScroll: boolean
+        ) => {
+          'worklet'
+          if (focusedTab.value !== _name) return
+
+          if (IS_IOS) {
+            const contentHeight =
+              contentHeights.value[tabNames.value.indexOf(_name)] ||
+              Number.MAX_VALUE
+            const clampMax = contentHeight - (_containerHeight || 0)
+            scrollYCurrent.value = _allowHeaderOverscroll
+              ? y
+              : interpolate(
+                  y,
+                  [0, clampMax],
+                  [0, clampMax],
+                  Extrapolation.CLAMP
+                )
+          } else {
+            scrollYCurrent.value = y
+          }
+
+          scrollY.value[_name] = scrollYCurrent.value
+          oldAccScrollY.value = accScrollY.value
+          accScrollY.value = scrollY.value[_name] + offset.value
+
+          if (_revealHeaderOnScroll) {
+            const delta = accScrollY.value - oldAccScrollY.value
+            const nextValue = accDiffClamp.value + delta
+            if (delta > 0) {
+              accDiffClamp.value = Math.min(
+                headerScrollDistance.value,
+                nextValue
+              )
+            } else if (delta < 0) {
+              accDiffClamp.value = Math.max(0, nextValue)
+            }
+          }
+        }
+      )(rawY, name, containerHeight, allowHeaderOverscroll, revealHeaderOnScroll)
+    },
+    [
+      name,
+      focusedTab,
+      contentHeights,
+      tabNames,
+      containerHeight,
+      scrollYCurrent,
+      scrollY,
+      oldAccScrollY,
+      accScrollY,
+      offset,
+      allowHeaderOverscroll,
+      revealHeaderOnScroll,
+      accDiffClamp,
+      headerScrollDistance,
+    ]
+  )
 
   return (
     <LegendListMemo
       {...rest}
       onLayout={onLayout}
-      ref={ref}
+      ref={passRef}
+      refScrollView={scrollViewRef}
       bouncesZoom={false}
       style={memoStyle}
       contentContainerStyle={memoContentContainerStyle}
       progressViewOffset={progressViewOffset}
-      onScroll={scrollHandler}
+      onScroll={onScroll}
       onContentSizeChange={scrollContentSizeChangeHandlers}
       scrollEventThrottle={16}
       automaticallyAdjustContentInsets={false}
       refreshControl={memoRefreshControl}
-      // workaround for: https://github.com/software-mansion/react-native-reanimated/issues/2735
       onMomentumScrollEnd={() => {}}
     />
   )
@@ -131,7 +238,6 @@ function LegendListImpl<R>(
 
 /**
  * Use like a regular LegendList from @legendapp/list.
- * Note: Requires allowHeaderOverscroll on the Tabs.Container for iOS.
  */
 export const LegendList = React.forwardRef(LegendListImpl) as <T>(
   p: Omit<LLProps<T>, 'onScroll'> & { ref?: React.Ref<any> }
